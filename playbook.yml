@@ -21,11 +21,31 @@
     - name: Install apt-transport-https
       apt: name=apt-transport-https state=latest force=yes install_recommends=no
 
+    - name: Check if docker is installed
+      command: docker -v
+      ignore_errors: yes
+      register: installed_docker_version
+
     - name: Add docker gpg key
       apt_key: keyserver=hkp://p80.pool.sks-keyservers.net id=58118E89F3A912897C070ADBF76221572C52609D
+      when: installed_docker_version|failed
 
     - name: Add docker source.list
       lineinfile: dest=/etc/apt/sources.list.d/docker.list create=yes line="deb https://apt.dockerproject.org/repo debian-jessie main"
+      when: installed_docker_version|failed
+
+    - name: Check if python pip is installed
+      command: pip -V
+      ignore_errors: yes
+      register: installed_pip_version
+
+    - name: Get python pip
+      get_url: url=https://bootstrap.pypa.io/get-pip.py dest=/tmp
+      when: installed_pip_version|failed
+
+    - name: Install python pip
+      command: python get-pip.py chdir=/tmp
+      when: installed_pip_version|failed
 
     - name: Install requirements
       apt: name={{item}} state=latest force=yes install_recommends=no
@@ -33,22 +53,34 @@
         - git
         - docker-engine
 
+    - name: Install docker-py via pip
+      pip: name=docker-py version=1.2.2
+      when: installed_docker_version|failed
+
+    - name: Check if golang is installed
+      command: go version
+      ignore_errors: yes
+      register: installed_go_version
+
     - name: Download golang
       get_url: url=https://storage.googleapis.com/golang/go{{go_version}}.linux-amd64.tar.gz dest=/tmp
+      when: installed_go_version|failed
 
     - name: Untar golang
       unarchive: src=/tmp/go{{go_version}}.linux-amd64.tar.gz dest=/usr/local
+      when: installed_go_version|failed
 
     - name: Add go to $PATH
       lineinfile: dest=/etc/profile line="export PATH=$PATH:/usr/local/go/bin"
+      when: installed_go_version|failed
 
-    #- name: Start docker service
-    #  service: name=docker state=started
+    - name: Start docker service
+      service: name=docker state=started
 
-    #- name: Start mongodb container
-    #  docker:
-    #    name: bookmark-mongodb
-    #    image: mongo
-    #    state: running
-    #    ports:
-    #      - "27017:27017"
+    - name: Start mongodb container
+      docker:
+        name: bookmark-mongodb
+        image: mongo
+        state: running
+        ports:
+          - "27017:27017"
